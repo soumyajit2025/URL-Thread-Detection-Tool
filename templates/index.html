@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>URL Threat Scanner</title>
+  <link rel="stylesheet" href="/static/style.css">
+     <style>
+    h1 {
+      text-align: center;      /* centers the header */
+      font-family: "Calisto MT", serif;
+      font-weight: bold;
+    }
+  </style>
+  <style>
+    /* Glitch Background Styles */
+    #glitch-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1; /* Send to back */
+      pointer-events: none; /* Don't interfere with clicks */
+    }
+ 
+    #glitch-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+ 
+    .outer-vignette,
+    .center-vignette {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+ 
+    .outer-vignette {
+      background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,0.95) 100%);
+    }
+ 
+    .center-vignette {
+      background: radial-gradient(circle, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 60%);
+    }
+ 
+    /* Ensure card is above glitch */
+    .card {
+      position: relative;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.558); /* Slightly transparent dark bg for readability */
+      backdrop-filter: blur(5px); /* Optional: frosted glass effect (modern browsers) */
+      padding: 2rem;
+      border-radius: 12px;
+      max-width: 600px;
+      margin: 2rem auto;
+      color: white;
+    }
+ 
+    .card h1,
+    .card h2,
+    .card p,
+    .card label,
+    .card input,
+    .card button {
+      color: white;
+    }
+ 
+    .card h1 {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: bold;
+      -webkit-text-stroke: 1px rgba(0, 0, 0, 0.3);
+      text-shadow: 0 0 5px #00a2ff66,
+                   0 0 10px #00a2ff66,
+                   0 0 20px #00a2ff66,
+                   0 0 40px #0070e066;
+}
+
+    .card input {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+    }
+ 
+    .card input::placeholder {
+      color: rgba(255, 255, 255, 0.7);
+    }
+ 
+    .card button {
+      background: #00a2ff;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.001s ease;
+      box-shadow: 0 5px 0 #00436d; /* shadow for depth */
+    }
+ 
+    .card button:hover {
+      background: #0070e0;
+    }
+    .card button:active {
+      box-shadow: 0 1px 0 #0070b8;
+      transform: translateY(1px);
+    }
+  </style>
+</head>
+<body>
+ 
+  <!-- Glitch Background -->
+  <div id="glitch-container">
+    <canvas id="glitch-canvas"></canvas>
+    <!-- Vignettes will be added by JS -->
+  </div>
+ 
+  <!-- Your Original Content -->
+  <div class="card">
+    <h1>🛡️ URL Threat Scanner</h1>
+    <form method="POST">
+      <input type="text" name="url" placeholder="Enter full URL (https://example.com)" required>
+      <button type="submit">Scan</button>
+    </form>
+ 
+ 
+    <div class="result">
+      <h2>Result:-</h2>
+      <p><strong>URL:</strong> {{ result.url }}</p>
+      <p><strong>Risk score:</strong> {{ result.score }} / 100</p>
+      <p><strong>Threats:</strong> {{ result.threats }}</p>
+    </div>
+ 
+    <!-- <p class="hint">Scan history is saved and accessible via <code>/history</code> (JSON).</p> -->
+  </div>
+ 
+  <!-- Glitch Effect Script -->
+  <script>
+    class LetterGlitch {
+      constructor(containerId, options = {}) {
+        this.container = document.getElementById(containerId);
+        this.canvas = document.getElementById('glitch-canvas');
+        this.ctx = this.canvas.getContext('2d');
+ 
+        // Default options
+        this.options = {
+          glitchColors: ['#2b4539', '#61dca3', '#61b3dc'],
+          glitchSpeed: 50,
+          centerVignette: true,
+          outerVignette: true, // <-- We enable both for better contrast
+          smooth: true,
+          characters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$&*()-_+=/[]{};:<>.,0123456789',
+          ...options
+        };
+ 
+        this.letters = [];
+        this.grid = { columns: 0, rows: 0 };
+        this.lastGlitchTime = Date.now();
+        this.animationId = null;
+ 
+        this.fontSize = 16;
+        this.charWidth = 10;
+        this.charHeight = 20;
+ 
+        this.init();
+      }
+ 
+      getRandomChar() {
+        const chars = Array.from(this.options.characters);
+        return chars[Math.floor(Math.random() * chars.length)];
+      }
+ 
+      getRandomColor() {
+        return this.options.glitchColors[
+          Math.floor(Math.random() * this.options.glitchColors.length)
+        ];
+      }
+ 
+      hexToRgb(hex) {
+        const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+        hex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result
+          ? {
+              r: parseInt(result[1], 16),
+              g: parseInt(result[2], 16),
+              b: parseInt(result[3], 16)
+            }
+          : null;
+      }
+ 
+      interpolateColor(start, end, factor) {
+        const result = {
+          r: Math.round(start.r + (end.r - start.r) * factor),
+          g: Math.round(start.g + (end.g - start.g) * factor),
+          b: Math.round(start.b + (end.b - start.b) * factor)
+        };
+        return `rgb(${result.r}, ${result.g}, ${result.b})`;
+      }
+ 
+      calculateGrid(width, height) {
+        const columns = Math.ceil(width / this.charWidth);
+        const rows = Math.ceil(height / this.charHeight);
+        return { columns, rows };
+      }
+ 
+      initializeLetters(columns, rows) {
+        this.grid = { columns, rows };
+        const totalLetters = columns * rows;
+        this.letters = Array.from({ length: totalLetters }, () => ({
+          char: this.getRandomChar(),
+          color: this.getRandomColor(),
+          targetColor: this.getRandomColor(),
+          colorProgress: 1
+        }));
+      }
+ 
+      resizeCanvas() {
+        const parent = this.canvas.parentElement;
+        if (!parent) return;
+ 
+        const dpr = window.devicePixelRatio || 1;
+        const rect = parent.getBoundingClientRect();
+ 
+        this.canvas.width = rect.width * dpr;
+        this.canvas.height = rect.height * dpr;
+ 
+        this.canvas.style.width = `${rect.width}px`;
+        this.canvas.style.height = `${rect.height}px`;
+ 
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+ 
+        const { columns, rows } = this.calculateGrid(rect.width, rect.height);
+        this.initializeLetters(columns, rows);
+ 
+        this.drawLetters();
+      }
+ 
+      drawLetters() {
+        if (!this.ctx || this.letters.length === 0) return;
+        const rect = this.canvas.getBoundingClientRect();
+        this.ctx.clearRect(0, 0, rect.width, rect.height);
+        this.ctx.font = `${this.fontSize}px monospace`;
+        this.ctx.textBaseline = 'top';
+ 
+        this.letters.forEach((letter, index) => {
+          const x = (index % this.grid.columns) * this.charWidth;
+          const y = Math.floor(index / this.grid.columns) * this.charHeight;
+          this.ctx.fillStyle = letter.color;
+          this.ctx.fillText(letter.char, x, y);
+        });
+      }
+ 
+      updateLetters() {
+        if (!this.letters || this.letters.length === 0) return;
+ 
+        const updateCount = Math.max(1, Math.floor(this.letters.length * 0.05));
+ 
+        for (let i = 0; i < updateCount; i++) {
+          const index = Math.floor(Math.random() * this.letters.length);
+          if (!this.letters[index]) continue;
+ 
+          this.letters[index].char = this.getRandomChar();
+          this.letters[index].targetColor = this.getRandomColor();
+ 
+          if (!this.options.smooth) {
+            this.letters[index].color = this.letters[index].targetColor;
+            this.letters[index].colorProgress = 1;
+          } else {
+            this.letters[index].colorProgress = 0;
+          }
+        }
+      }
+ 
+      handleSmoothTransitions() {
+        let needsRedraw = false;
+        this.letters.forEach(letter => {
+          if (letter.colorProgress < 1) {
+            letter.colorProgress += 0.05;
+            if (letter.colorProgress > 1) letter.colorProgress = 1;
+ 
+            const startRgb = this.hexToRgb(letter.color);
+            const endRgb = this.hexToRgb(letter.targetColor);
+            if (startRgb && endRgb) {
+              letter.color = this.interpolateColor(startRgb, endRgb, letter.colorProgress);
+              needsRedraw = true;
+            }
+          }
+        });
+ 
+        if (needsRedraw) {
+          this.drawLetters();
+        }
+      }
+ 
+      animate() {
+        const now = Date.now();
+        if (now - this.lastGlitchTime >= this.options.glitchSpeed) {
+          this.updateLetters();
+          this.drawLetters();
+          this.lastGlitchTime = now;
+        }
+ 
+        if (this.options.smooth) {
+          this.handleSmoothTransitions();
+        }
+ 
+        this.animationId = requestAnimationFrame(() => this.animate());
+      }
+ 
+      init() {
+        // Setup vignettes
+        if (this.options.outerVignette) {
+          const outer = document.createElement('div');
+          outer.className = 'outer-vignette';
+          this.container.appendChild(outer);
+        }
+        if (this.options.centerVignette) {
+          const center = document.createElement('div');
+          center.className = 'center-vignette';
+          this.container.appendChild(center);
+        }
+ 
+        // Initial setup
+        this.resizeCanvas();
+        this.animate();
+ 
+        // Handle resize
+        let resizeTimeout;
+        const handleResize = () => {
+          clearTimeout(resizeTimeout);
+          resizeTimeout = setTimeout(() => {
+            cancelAnimationFrame(this.animationId);
+            this.resizeCanvas();
+            this.animate();
+          }, 100);
+        };
+ 
+        window.addEventListener('resize', handleResize);
+      }
+    }
+ 
+    // Initialize after DOM loads
+    document.addEventListener('DOMContentLoaded', () => {
+      new LetterGlitch('glitch-container', {
+        glitchSpeed: 60,
+        centerVignette: true,
+        outerVignette: true,
+        smooth: true,
+        glitchColors: ['#2b4539', '#61dca3', '#61b3dc'] // Optional: cyberpunk vibe
+      });
+    });
+  </script>
+ 
+</body>
+</html>
+ 
